@@ -1,0 +1,40 @@
+# Define variables
+$organization = "your_organization"    # Azure DevOps organization name
+$project = "your_project"              # Azure DevOps project name
+$agentPoolId = "new_agent_pool_id"                  # New agent pool ID
+$pat = "your_personal_access_token"    # Personal Access Token
+
+# Base64 encode the PAT for authorization
+$base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($pat)"))
+
+# Get the list of all release pipelines in the project
+$releasePipelinesUrl = "https://vsrm.dev.azure.com/$organization/$project/_apis/release/definitions?api-version=6.0"
+$releasePipelinesResponse = Invoke-RestMethod -Uri $releasePipelinesUrl -Method Get -Headers @{
+    Authorization = "Basic $base64AuthInfo"
+}
+$releasePipelines = $releasePipelinesResponse.value
+
+foreach ($pipeline in $releasePipelines) {
+    $pipelineId = $pipeline.id
+    Write-Output "Updating pipeline ID: $pipelineId"
+
+    # Get the current release pipeline configuration
+    $releasePipelineUrl = "https://vsrm.dev.azure.com/$organization/$project/_apis/release/definitions/$pipelineId?api-version=6.0"
+    $releasePipelineResponse = Invoke-RestMethod -Uri $releasePipelineUrl -Method Get -Headers @{
+        Authorization = "Basic $base64AuthInfo"
+    }
+    $releasePipeline = $releasePipelineResponse | ConvertTo-Json -Depth 100
+
+    # Update the agent pool ID in the release pipeline configuration
+    $releasePipeline = $releasePipeline -replace '"queueId":\s*\d+', '"queueId": ' + $agentPoolId
+
+    # Update the release pipeline with the new agent pool ID
+    $updatePipelineResponse = Invoke-RestMethod -Uri $releasePipelineUrl -Method Put -Headers @{
+        Authorization = "Basic $base64AuthInfo"
+        "Content-Type" = "application/json"
+    } -Body $releasePipeline
+
+    Write-Output "Pipeline ID $pipelineId updated successfully."
+}
+
+Write-Output "All release pipelines updated successfully."
